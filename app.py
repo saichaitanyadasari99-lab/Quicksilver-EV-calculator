@@ -6,7 +6,7 @@ import streamlit as st
 import math
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="QuickSilver · EV Powertrain Calculator", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="QuickSilver EV Platform Studio", layout="wide", page_icon="⚡")
 
 st.markdown("""
 <style>
@@ -27,6 +27,18 @@ st.markdown("""
   .infobox{background:#EFF4FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1e3a8a;margin-bottom:10px;}
   .warnbox{background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:10px;}
   .rolebox{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+  .sectionhero{padding:18px 22px;border-radius:18px;margin:4px 0 12px 0;border:1px solid #D7E3F4;background:linear-gradient(135deg,#F8FBFF 0%,#EEF5FF 100%);}
+  .sectioneyebrow{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;}
+  .sectiontitle{font-size:28px;font-weight:800;color:#0F172A;line-height:1.1;margin-bottom:6px;}
+  .sectionsub{font-size:13px;color:#475569;max-width:840px;}
+  .savingspanel{height:100%;padding:18px 20px;border-radius:18px;background:linear-gradient(135deg,#ECFDF5 0%,#D1FAE5 100%);border:1px solid #A7F3D0;box-shadow:0 10px 24px rgba(16,185,129,0.10);}
+  .savingslabel{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#047857;}
+  .savingsvalue{font-size:44px;font-weight:900;line-height:1;color:#047857;margin:10px 0 6px 0;}
+  .savingssub{font-size:13px;color:#065F46;margin-bottom:14px;}
+  .savingstrip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px;}
+  .savingtile{background:rgba(255,255,255,0.72);border:1px solid rgba(16,185,129,0.18);border-radius:12px;padding:10px 12px;}
+  .savingtile .k{font-size:10px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;color:#047857;}
+  .savingtile .v{font-size:20px;font-weight:800;color:#064E3B;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -34,6 +46,28 @@ st.markdown("""
 # COLOURS & TINY HELPERS
 # ════════════════════════════════════════════════════════════════════════
 BLUE='#1D6EFB'; GREEN='#10B981'; AMBER='#F59E0B'; RED='#EF4444'; SLATE='#94A3B8'
+GRID_H = 280
+
+section_labels = [
+    "Overview","Road","Battery","Drive",
+    "Charging","Thermal","Safety","Chassis","Sensitivity",
+    "Engineer","Customer","PM"
+]
+
+SECTION_THEMES = {
+    "Overview":  dict(color="#2563EB", eyebrow="Program Snapshot", title="Vehicle Program Overview", desc="Cross-check range, motor sizing, pack adequacy, and charging KPIs from one engineering model."),
+    "Road":      dict(color="#0F766E", eyebrow="Road Load", title="Road Load And Performance", desc="See how payload, tyres, grade, and aero combine into wheel force and motor demand."),
+    "Battery":   dict(color="#0284C7", eyebrow="Battery", title="Battery Sizing And SoC Window", desc="Track usable energy, reserves, C-rate exposure, and pack adequacy against the mission target."),
+    "Drive":     dict(color="#7C3AED", eyebrow="Drive System", title="Motor And Gearbox Matching", desc="Validate torque, continuous power, peak power, and speed headroom for the selected drivetrain."),
+    "Charging":  dict(color="#EA580C", eyebrow="Charging", title="Charging Performance", desc="Review AC, DC fast charge, and V2L implications from the pack and charger assumptions."),
+    "Thermal":   dict(color="#DC2626", eyebrow="Thermal", title="Thermal And DCIR Behaviour", desc="Understand where heat is generated and how internal resistance affects voltage sag and derating."),
+    "Safety":    dict(color="#BE123C", eyebrow="Safety", title="Braking And HV Safety", desc="Check regen contribution, brake force split, fuse sizing, and insulation protection."),
+    "Chassis":   dict(color="#16A34A", eyebrow="Chassis", title="Chassis Load Balance", desc="Review axle loads, spring requirements, and steering or ride assumptions under the active mass model."),
+    "Sensitivity": dict(color="#4F46E5", eyebrow="Sensitivity", title="Sensitivity Explorer", desc="See which assumptions move range and power the most so you know where the design leverage really is."),
+    "Engineer":  dict(color="#0D9488", eyebrow="Engineering", title="Engineer Workbench", desc="Turn the current simulation into engineering actions, leverage estimates, and closure items."),
+    "Customer":  dict(color="#059669", eyebrow="Customer Economics", title="Customer Savings And Charging Story", desc="Translate the engineering model into monthly operating cost, range expectations, and trip planning."),
+    "PM":        dict(color="#F97316", eyebrow="Program Gates", title="Project Manager Dashboard", desc="Summarize pass-fail gates, risk register, and near-term launch-readiness in one place."),
+}
 
 def kw(w): return w/1000
 def mc(label,value,unit,c=''):
@@ -47,17 +81,17 @@ def hex_to_rgba(hex_color, alpha):
     return f'rgba({r},{g},{b},{alpha})'
 
 
-LAYOUT = dict(margin=dict(l=8,r=8,t=32,b=8), plot_bgcolor='white', paper_bgcolor='white',
+LAYOUT = dict(margin=dict(l=8,r=8,t=36,b=8), plot_bgcolor='white', paper_bgcolor='white',
               font_size=11, legend_font_size=10,
               yaxis=dict(gridcolor='#F1F5F9'), xaxis=dict(gridcolor='#F1F5F9'))
 
-def pbar(labels, vals, colors=None, title='', ylab='', h=270):
+def pbar(labels, vals, colors=None, title='', ylab='', h=GRID_H):
     fig = go.Figure(go.Bar(x=labels, y=vals, marker_color=colors or [BLUE]*len(vals),
                            marker_line_width=0, text=[f'{v:.1f}' for v in vals], textposition='outside'))
     fig.update_layout(title=title, height=h, yaxis_title=ylab, **LAYOUT)
     return fig
 
-def pline(xs, yd, title='', xlab='', ylab='', h=270):
+def pline(xs, yd, title='', xlab='', ylab='', h=GRID_H):
     colours=[BLUE,AMBER,GREEN,RED,SLATE]; dashes=['solid','dash','dot','dashdot','solid']
     fig = go.Figure()
     for i,(name,y) in enumerate(yd.items()):
@@ -65,6 +99,10 @@ def pline(xs, yd, title='', xlab='', ylab='', h=270):
                                  line=dict(color=colours[i%5],dash=dashes[i%5],width=2),mode='lines'))
     fig.update_layout(title=title, height=h, xaxis_title=xlab, yaxis_title=ylab, **LAYOUT)
     return fig
+
+
+def section_theme(section):
+    return SECTION_THEMES.get(section, SECTION_THEMES["Overview"])
 
 # ════════════════════════════════════════════════════════════════════════
 # CORE PHYSICS ENGINE — everything flows from one calculate()
@@ -563,53 +601,62 @@ def calculate(I):
 # SIDEBAR INPUTS
 # ════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown('<div style="background:#0F172A;color:white;padding:10px 16px;border-radius:8px;font-weight:700;font-size:15px;margin-bottom:12px;">⚡ QuickSilver v4 <span style="font-size:11px;font-weight:400;color:#94A3B8;">LFP SCV Calculator</span></div>', unsafe_allow_html=True)
+    current_section = st.session_state.get('section_selector', 'Overview')
+    current_theme = section_theme(current_section)
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg,{current_theme["color"]},#0F172A);color:white;padding:12px 16px;border-radius:12px;font-weight:700;font-size:16px;margin-bottom:12px;box-shadow:0 10px 24px rgba(15,23,42,0.14);">'
+        f'⚡ QuickSilver v4'
+        f'<div style="font-size:11px;font-weight:500;color:rgba(255,255,255,0.82);margin-top:4px;">Commercial EV sizing workspace</div>'
+        f'<div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.70);margin-top:8px;">{current_section}</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
     st.markdown('<div class="sh">🚗 Vehicle & Mission</div>', unsafe_allow_html=True)
     c1,c2=st.columns(2)
-    gvw         = c1.number_input('Rated GVW (kg)',      value=3500,min_value=500, max_value=12000,step=50, help='Homologated gross vehicle weight at rated load condition.')
+    gvw         = c1.number_input('Rated GVW (kg)',      value=2500,min_value=500, max_value=12000,step=50, help='Homologated gross vehicle weight at rated load condition.')
     payload_rated = c2.number_input('Rated Payload (kg)', value=1400,min_value=0,   max_value=6000,step=50, help='Payload used for rated vehicle configuration and kerb-mass derivation.')
-    payload     = c1.number_input('Operating Payload (kg)',  value=1000,min_value=0,   max_value=7000,step=50, help='Actual payload for current trip simulation; can be underload or overload.')
-    range_km    = c2.number_input('Range Target (km)',    value=180, min_value=50,  max_value=600, step=10, help='Mission distance target used for pack sizing and compliance checks.')
+    payload     = c1.number_input('Operating Payload (kg)',  value=1400,min_value=0,   max_value=7000,step=50, help='Actual payload for current trip simulation; can be underload or overload.')
+    range_km    = c2.number_input('Range Target (km)',    value=160, min_value=50,  max_value=600, step=10, help='Mission distance target used for pack sizing and compliance checks.')
     top_speed   = c1.number_input('Top Speed (km/h)',value=80,min_value=30, max_value=160, step=5, help='Maximum vehicle speed target on flat road.')
     grade       = c1.number_input('Grade (%)',     value=22.0,min_value=0.0, max_value=50.0,step=0.5, help='Road grade target for climbing capability checks.')
-    grade_speed = c2.number_input('Grade Spd (km/h)',value=20,min_value=5,  max_value=60,  step=5, help='Sustained climbing speed at selected grade.')
+    grade_speed = c2.number_input('Grade Spd (km/h)',value=15,min_value=5,  max_value=60,  step=5, help='Sustained climbing speed at selected grade.')
     accel_time  = c1.number_input('0→60 time (s)',value=18.0, min_value=5.0,max_value=60.0,step=0.5, help='Acceleration target from standstill to 60 km/h.')
     ambient     = c2.number_input('Ambient (°C)', value=45,   min_value=-20, max_value=55,  step=1, help='Ambient temperature for thermal and air-density effects.')
-    altitude    = st.number_input('Altitude (m ASL)',value=200,min_value=0, max_value=3000,step=50, help='Operating altitude above sea level; affects air density.')
+    altitude    = st.number_input('Altitude (m ASL)',value=500,min_value=0, max_value=3000,step=50, help='Operating altitude above sea level; affects air density.')
 
     st.markdown('<div class="sh">💨 Aero & Tyres</div>', unsafe_allow_html=True)
     c1,c2=st.columns(2)
-    cd           = c1.number_input('Cd',          value=0.42,min_value=0.2,max_value=1.5,step=0.01,format='%.2f', help='Aerodynamic drag coefficient.')
-    frontal_area = c2.number_input('Area A (m²)', value=3.8, min_value=1.0,max_value=10.0,step=0.1, help='Effective frontal area used in aero drag force.')
+    cd           = c1.number_input('Cd',          value=0.35,min_value=0.2,max_value=1.5,step=0.01,format='%.2f', help='Aerodynamic drag coefficient.')
+    frontal_area = c2.number_input('Area A (m²)', value=3.5, min_value=1.0,max_value=10.0,step=0.1, help='Effective frontal area used in aero drag force.')
     cr           = st.number_input('Rolling Resist Cr',value=0.012,min_value=0.005,max_value=0.05,step=0.001,format='%.3f', help='Rolling resistance coefficient of tyres/road contact.')
     c1,c2=st.columns(2)
     tyre_width   = c1.number_input('Tyre Width (mm)',  value=195,min_value=100,max_value=400,step=5, help='Nominal tyre section width.')
     tyre_aspect  = c2.number_input('Aspect Ratio (%)', value=70, min_value=25, max_value=100,step=5, help='Tyre sidewall ratio: sidewall height as % of width.')
-    tyre_diam    = st.number_input('Rim Diam (inch)',  value=15, min_value=10, max_value=24, step=1, help='Wheel rim diameter.')
+    tyre_diam    = st.number_input('Rim Diam (inch)',  value=21, min_value=10, max_value=24, step=1, help='Wheel rim diameter.')
 
     st.markdown('<div class="sh">⚙️ Gear Ratio</div>', unsafe_allow_html=True)
     gear_mode  = st.selectbox('Mode',['manual','auto'],index=0, help='Auto computes gear ratio from top-speed and motor max rpm.')
-    gear_ratio = st.number_input('Gear Ratio i (:1)',value=8.85,min_value=3.0,max_value=20.0,step=0.05,format='%.2f',disabled=(gear_mode=='auto'), help='Final drive ratio between motor and wheel speed.')
+    gear_ratio = st.number_input('Gear Ratio i (:1)',value=11.25,min_value=3.0,max_value=20.0,step=0.05,format='%.2f',disabled=(gear_mode=='auto'), help='Final drive ratio between motor and wheel speed.')
     gear_eff   = st.number_input('Gear η_g',value=0.97,min_value=0.8,max_value=1.0,step=0.01,format='%.2f', help='Gearbox mechanical efficiency.')
 
     st.markdown('<div class="sh">🔧 Motor Spec</div>', unsafe_allow_html=True)
     c1,c2=st.columns(2)
-    motor_cont    = c1.number_input('Continuous (kW)',value=40,  min_value=5,  max_value=200, step=5, help='Continuous motor power rating.')
-    motor_peak    = c2.number_input('Peak 30s (kW)',  value=80,  min_value=5,  max_value=400, step=5, help='Short-duration peak motor power (30s).')
-    motor_base_rpm= c1.number_input('Base rpm',       value=3000,min_value=500,max_value=8000,step=100, help='Motor base speed where constant-torque region ends.')
-    motor_max_rpm = c2.number_input('Max rpm',        value=6000,min_value=1000,max_value=20000,step=100, help='Maximum allowable motor speed.')
+    motor_cont    = c1.number_input('Continuous (kW)',value=30,  min_value=5,  max_value=200, step=5, help='Continuous motor power rating.')
+    motor_peak    = c2.number_input('Peak 30s (kW)',  value=60,  min_value=5,  max_value=400, step=5, help='Short-duration peak motor power (30s).')
+    motor_base_rpm= c1.number_input('Base rpm',       value=2000,min_value=500,max_value=8000,step=100, help='Motor base speed where constant-torque region ends.')
+    motor_max_rpm = c2.number_input('Max rpm',        value=8000,min_value=1000,max_value=20000,step=100, help='Maximum allowable motor speed.')
     motor_eff     = c1.number_input('η cont',         value=0.95,min_value=0.7,max_value=0.99,step=0.01,format='%.2f', help='Motor efficiency under peak operation.')
     motor_eff_pk  = c2.number_input('η peak',         value=0.92,min_value=0.7,max_value=0.99,step=0.01,format='%.2f', help='Motor efficiency in continuous operation.')
 
     st.markdown('<div class="sh">🔋 Battery Pack</div>', unsafe_allow_html=True)
     c1,c2=st.columns(2)
     series_cells  = c1.number_input('Series (S)',    value=96,min_value=20, max_value=300,step=4, help='Number of cells in series in the traction pack.')
-    parallel_str  = c2.number_input('Parallel (P)',  value=2, min_value=1,  max_value=10, step=1, help='Number of parallel strings in the pack.')
-    cell_ah       = c1.number_input('Cell Ah',       value=40,min_value=10, max_value=300,step=5, help='Cell capacity in ampere-hours.')
+    parallel_str  = c2.number_input('Parallel (P)',  value=1, min_value=1,  max_value=10, step=1, help='Number of parallel strings in the pack.')
+    cell_ah       = c1.number_input('Cell Ah',       value=85,min_value=10, max_value=300,step=5, help='Cell capacity in ampere-hours.')
     pack_dcir_mo  = c2.number_input('Pack DCIR (mΩ)',value=20,min_value=1,  max_value=200,step=1, help='Total pack DC internal resistance.')
     top_guard     = c1.number_input('Top Guard (%)', value=4.0,min_value=0.0,max_value=15.0,step=0.1, help='Top state-of-charge reserve not used in mission.')
-    bot_guard     = c2.number_input('Bot Guard (%)', value=3.7,min_value=0.0,max_value=15.0,step=0.1, help='Bottom state-of-charge reserve not used in mission.')
+    bot_guard     = c2.number_input('Bot Guard (%)', value=4.0,min_value=0.0,max_value=15.0,step=0.1, help='Bottom state-of-charge reserve not used in mission.')
 
     st.markdown('<div class="sh">🔄 Duty Cycle (Manual Reference)</div>', unsafe_allow_html=True)
     st.caption('Used as reference; physics model drives sizing automatically')
@@ -624,7 +671,7 @@ with st.sidebar:
     c1,c2=st.columns(2)
     real_world_factor = c1.number_input('Real-world factor', value=0.98,min_value=0.85,max_value=1.60,step=0.01,format='%.2f', help='Calibration multiplier to align model with field data.')
     regen_capture     = c2.number_input('Regen capture frac', value=0.28,min_value=0.00,max_value=0.60,step=0.01,format='%.2f', help='Fraction of urban+transit braking energy captured by regen.')
-    aux_kw            = st.number_input('Aux load (kW)', value=0.4,min_value=0.0,max_value=8.0,step=0.1,format='%.1f', help='Continuous auxiliary electrical load (HVAC, electronics, pumps).')
+    aux_kw            = st.number_input('Aux load (kW)', value=1.5,min_value=0.0,max_value=8.0,step=0.1,format='%.1f', help='Continuous auxiliary electrical load (HVAC, electronics, pumps).')
     st.caption('Calibration knobs for real-world fleets; no fixed load-to-range relation is hardcoded.')
 
     st.markdown('<div class="sh">Charging</div>', unsafe_allow_html=True)
@@ -672,13 +719,17 @@ except Exception as e:
 # ════════════════════════════════════════════════════════════════════════
 # TABS
 # ════════════════════════════════════════════════════════════════════════
-section_labels = [
-    "Overview","Road","Battery","Drive",
-    "Charging","Thermal","Safety","Chassis","Sensitivity",
-    "Engineer","Customer","PM"
-]
-active_section = st.radio("Section", section_labels, index=0, horizontal=True)
+active_section = st.radio("Section", section_labels, index=0, horizontal=True, key="section_selector")
 st.caption("Horizontal section selector enabled.")
+active_theme = section_theme(active_section)
+st.markdown(
+    f'<div class="sectionhero" style="border-top:4px solid {active_theme["color"]};">'
+    f'<div class="sectioneyebrow" style="color:{active_theme["color"]};">{active_theme["eyebrow"]}</div>'
+    f'<div class="sectiontitle">{active_theme["title"]}</div>'
+    f'<div class="sectionsub">{active_theme["desc"]}</div>'
+    f'</div>',
+    unsafe_allow_html=True
+)
 
 # ────────────────────────────────────────────────────────────────────────
 # TAB 1 — OVERVIEW
@@ -904,7 +955,7 @@ if active_section == "Battery":
     go.Bar(name='Top Guard', y=['SoC'], x=[top_g], orientation='h',
            marker_color=hex_to_rgba(AMBER, 0.53)),
         ])
-        fig_soc.update_layout(barmode='stack',title='SoC Window',height=160,
+        fig_soc.update_layout(barmode='stack',title='SoC Window',height=GRID_H,
                               margin=dict(l=8,r=8,t=30,b=8),plot_bgcolor='white',paper_bgcolor='white',
                               xaxis=dict(range=[0,100],title='SoC (%)',gridcolor='#F1F5F9'),font_size=11)
         st.plotly_chart(fig_soc,use_container_width=True)
@@ -914,7 +965,7 @@ if active_section == "Battery":
             [round(R['E_mission'],1),round(R['res_fan'],2),round(R['res_route'],2),
              round(R['res_dcir'],2),round(R['res_buf'],2),round(R['E_usable'],1),round(R['E_gross'],1),round(R['E_pack'],1)],
             colors=[BLUE,AMBER,AMBER,AMBER,AMBER,GREEN,RED,'#34D399'],
-            title='Energy Waterfall (kWh)',ylab='kWh',h=240),use_container_width=True)
+            title='Energy Waterfall (kWh)',ylab='kWh',h=GRID_H),use_container_width=True)
 
 # ────────────────────────────────────────────────────────────────────────
 # TAB 4 — MOTOR & DRIVE
@@ -974,14 +1025,14 @@ if active_section == "Drive":
             go.Scatter(x=[d['r_dyn_mm'] for d in R['tyre_sens']],
                        y=[d['T_req_Nm'] for d in R['tyre_sens']],
                        name='Wheel Torque Req (Nm)',line=dict(color=BLUE,width=2)),
-        ]).update_layout(title='Tyre r_dyn → Torque Requirement',height=200,
+        ]).update_layout(title='Tyre r_dyn → Torque Requirement',height=GRID_H,
                          xaxis_title='Dynamic radius (mm)',yaxis_title='Torque (Nm)',**LAYOUT),
         use_container_width=True)
         st.plotly_chart(go.Figure(data=[
             go.Scatter(x=[d['r_dyn_mm'] for d in R['tyre_sens']],
                        y=[d['gear_ratio_auto'] for d in R['tyre_sens']],
                        name='Auto Gear Ratio',line=dict(color=AMBER,width=2)),
-        ]).update_layout(title='Tyre r_dyn → Required Gear Ratio (Auto Mode)',height=180,
+        ]).update_layout(title='Tyre r_dyn → Required Gear Ratio (Auto Mode)',height=GRID_H,
                          xaxis_title='Dynamic radius (mm)',yaxis_title='Gear Ratio :1',**LAYOUT),
         use_container_width=True)
 
@@ -1077,12 +1128,36 @@ if active_section == "Charging":
     st.plotly_chart(pbar(
         [f"AC Full Charge\n(Type-2 {obc_power}kW)",f"DC 20→80%\n(CCS2 {dcfc_power}kW)","V2L to 20% SoC\n(230V 16A)"],
         [round(R['t_ac_h']*60),round(R['t_dc_min']),round(R['t_v2l_h']*60)],
-        colors=[BLUE,'#64B5F6',GREEN],title='Charging Time (minutes)',ylab='Minutes',h=260),
+        colors=[BLUE,'#64B5F6',GREEN],title='Charging Time (minutes)',ylab='Minutes',h=GRID_H),
     use_container_width=True)
 
 # ────────────────────────────────────────────────────────────────────────
 # TAB 6 — THERMAL
 # ────────────────────────────────────────────────────────────────────────
+# Add uniform comparison charts for the charging section
+if active_section == "Charging":
+    c1,c2=st.columns(2)
+    with c1:
+        fig_charge_current = go.Figure(go.Bar(
+            x=['AC', 'DC Fast', 'Cruise', 'Peak 30s'],
+            y=[R['I_ac'], R['I_dcfc'], R['I_cruise'], R['I_peak_A']],
+            marker_color=[BLUE, AMBER, GREEN, RED],
+            text=[f'{R["I_ac"]:.0f} A', f'{R["I_dcfc"]:.0f} A', f'{R["I_cruise"]:.0f} A', f'{R["I_peak_A"]:.0f} A'],
+            textposition='outside'
+        ))
+        fig_charge_current.update_layout(title='Charge Current Envelope', height=GRID_H, yaxis_title='Current (A)', **LAYOUT)
+        st.plotly_chart(fig_charge_current, use_container_width=True)
+    with c2:
+        fig_c_rate = go.Figure(go.Bar(
+            x=['AC', 'DC Fast', 'Cruise', 'Peak 30s'],
+            y=[R['C_ac'], R['C_dcfc'], R['C_cruise'], R['C_peak']],
+            marker_color=[BLUE, AMBER, GREEN, RED],
+            text=[f'{R["C_ac"]:.2f}C', f'{R["C_dcfc"]:.2f}C', f'{R["C_cruise"]:.2f}C', f'{R["C_peak"]:.2f}C'],
+            textposition='outside'
+        ))
+        fig_c_rate.update_layout(title='C-Rate Comparison', height=GRID_H, yaxis_title='C-rate', **LAYOUT)
+        st.plotly_chart(fig_c_rate, use_container_width=True)
+
 if active_section == "Thermal":
     st.markdown(f'<div class="infobox">⚙ <b>DCIR Coupling Active:</b> Pack DCIR = {pack_dcir_mo} mΩ → V_sag at peak = {R["V_sag_peak"]:.1f} V | Power derating = {R["P_derate_pct"]:.1f}% | Heat at peak = {R["Q_peak_W"]:.0f} W</div>', unsafe_allow_html=True)
 
@@ -1120,7 +1195,7 @@ if active_section == "Thermal":
             [d['dcir'] for d in R['dcir_sens']],
             {'Heat at Peak (W)':[d['heat_w'] for d in R['dcir_sens']],
              'Air Cooling Cap (W)':[round(R['Q_air_W']) for _ in R['dcir_sens']]},
-            title='Pack DCIR → Heat at Peak 30s',xlab='DCIR (mΩ)',ylab='Watts',h=220),
+            title='Pack DCIR → Heat at Peak 30s',xlab='DCIR (mΩ)',ylab='Watts',h=GRID_H),
         use_container_width=True)
 
     c1,c2=st.columns(2)
@@ -1131,14 +1206,14 @@ if active_section == "Thermal":
             go.Bar(name='Air Cooling (W)',x=['DCFC','Cruise','Peak 30s'],
                    y=[R['Q_air_W']]*3,marker_color=['rgba(16,185,129,0.6)']*3),
         ])
-        fig_th.update_layout(title='Heat Generation vs Air Cooling',barmode='group',height=260,**LAYOUT,yaxis_title='Watts')
+        fig_th.update_layout(title='Heat Generation vs Air Cooling',barmode='group',height=GRID_H,**LAYOUT,yaxis_title='Watts')
         st.plotly_chart(fig_th,use_container_width=True)
     with c2:
         st.plotly_chart(pline(
             [d['dcir'] for d in R['dcir_sens']],
             {'V_sag at Peak (V)':[d['vsag'] for d in R['dcir_sens']],
              'Actual Power (kW)':[d['power_kw'] for d in R['dcir_sens']]},
-            title='DCIR → Voltage Sag & Available Power',xlab='DCIR (mΩ)',ylab='V / kW',h=260),
+            title='DCIR → Voltage Sag & Available Power',xlab='DCIR (mΩ)',ylab='V / kW',h=GRID_H),
         use_container_width=True)
 
 # ────────────────────────────────────────────────────────────────────────
@@ -1181,6 +1256,29 @@ if active_section == "Safety":
                   ("Battery fan",50),("Motor fan",50),("LED lighting",80),("EPS",300),("HVAC",80),("Misc",50)]
         st.markdown("| Load | W |\n|---|---|\n"+"".join(f"| {l} | {w} |\n" for l,w in lv_loads)+f"| **Total** | **730** |")
 
+    c1,c2=st.columns(2)
+    with c1:
+        fig_brake = go.Figure(go.Bar(
+            x=['Regen', 'Front friction', 'Rear friction'],
+            y=[R['F_regen_brk'], R['F_friction_brk']*0.6, R['F_friction_brk']*0.4],
+            marker_color=[GREEN, BLUE, AMBER],
+            text=[f'{R["F_regen_brk"]:.0f} N', f'{R["F_friction_brk"]*0.6:.0f} N', f'{R["F_friction_brk"]*0.4:.0f} N'],
+            textposition='outside'
+        ))
+        fig_brake.update_layout(title='Brake Force Split', height=GRID_H, yaxis_title='Force (N)', **LAYOUT)
+        st.plotly_chart(fig_brake, use_container_width=True)
+    with c2:
+        fig_lv = go.Figure(go.Bar(
+            x=[w for _, w in lv_loads],
+            y=[l for l, _ in lv_loads],
+            orientation='h',
+            marker_color=[BLUE, '#60A5FA', '#93C5FD', '#BFDBFE', GREEN, '#34D399', AMBER, RED, '#F59E0B', SLATE],
+            text=[f'{w} W' for _, w in lv_loads],
+            textposition='outside'
+        ))
+        fig_lv.update_layout(title='LV Load Distribution', height=GRID_H, xaxis_title='Watts', yaxis_title='', **LAYOUT)
+        st.plotly_chart(fig_lv, use_container_width=True)
+
 # ────────────────────────────────────────────────────────────────────────
 # TAB 8 — CHASSIS
 # ────────────────────────────────────────────────────────────────────────
@@ -1209,9 +1307,15 @@ if active_section == "Chassis":
 | Turning circle | ≤ 10.5 m |
 | EPS assist ratio | 12:1 |
 """)
-    st.plotly_chart(pbar(['Front Axle','Rear Axle'],[round(R['F_front']),round(R['F_rear'])],
-                          colors=[BLUE,GREEN],title='Axle Load Distribution',ylab='Force (N)',h=240),
-    use_container_width=True)
+    c1,c2=st.columns(2)
+    with c1:
+        st.plotly_chart(pbar(['Front Axle','Rear Axle'],[round(R['F_front']),round(R['F_rear'])],
+                              colors=[BLUE,GREEN],title='Axle Load Distribution',ylab='Force (N)',h=GRID_H),
+        use_container_width=True)
+    with c2:
+        st.plotly_chart(pbar(['Front Spring','Rear Spring'],[round(R['k_front']/2000),round(R['k_rear']/2000)],
+                              colors=[AMBER,'#FBBF24'],title='Per-Spring Rate Requirement',ylab='kN/m',h=GRID_H),
+        use_container_width=True)
 
 # ────────────────────────────────────────────────────────────────────────
 # TAB 9 — SENSITIVITY (all physics-coupled)
@@ -1344,16 +1448,66 @@ if active_section == "Engineer":
     else:
         st.markdown('<div class="rolebox">All primary engineering gates are currently on-track for this input set.</div>', unsafe_allow_html=True)
 
+    c1,c2=st.columns(2)
+    with c1:
+        fig_levers = go.Figure(go.Bar(
+            x=['Vehicle mass', 'Payload', 'Aerodynamics'],
+            y=[gvw_lever, payload_lever, cd_lever],
+            marker_color=[BLUE, AMBER, GREEN],
+            text=[f'{gvw_lever:.2f}', f'{payload_lever:.2f}', f'{cd_lever:.1f}'],
+            textposition='outside'
+        ))
+        fig_levers.update_layout(title='Range Sensitivity Levers', height=GRID_H, yaxis_title='Impact index', **LAYOUT)
+        st.plotly_chart(fig_levers, use_container_width=True)
+    with c2:
+        thermal_headroom = max(0, 155 - R['T_winding'])
+        dcfc_c_headroom = max(0, 1.5 - R['C_dcfc'])
+        fig_headroom = go.Figure(go.Bar(
+            x=['Pack margin %', 'Torque margin %', 'Thermal headroom C', 'DCFC C headroom'],
+            y=[R['pack_margin_pct'], R['torque_margin'], thermal_headroom, dcfc_c_headroom],
+            marker_color=[GREEN if R['pack_margin_pct'] >= 8 else RED,
+                          GREEN if R['torque_margin'] > 8 else AMBER,
+                          GREEN if thermal_headroom > 15 else AMBER,
+                          GREEN if dcfc_c_headroom > 0 else RED],
+            text=[f'{R["pack_margin_pct"]:.1f}', f'{R["torque_margin"]:.1f}', f'{thermal_headroom:.0f}', f'{dcfc_c_headroom:.2f}'],
+            textposition='outside'
+        ))
+        fig_headroom.update_layout(title='Engineering Headroom Snapshot', height=GRID_H, yaxis_title='Margin', **LAYOUT)
+        st.plotly_chart(fig_headroom, use_container_width=True)
+
 # ------------------------------------------------------------------------
 # TAB 11 - END CUSTOMER VIEW
 # ------------------------------------------------------------------------
 if active_section == "Customer":
     st.markdown('<div class="infobox">Customer view: practical range expectations, running cost, and charging convenience.</div>', unsafe_allow_html=True)
 
-    daily_km = st.number_input('Daily driving distance (km)', value=80, min_value=10, max_value=400, step=5)
-    tariff = st.number_input('Electricity tariff (INR/kWh)', value=10.0, min_value=2.0, max_value=40.0, step=0.5)
-    diesel_price = st.number_input('Diesel price (INR/L)', value=95.0, min_value=50.0, max_value=200.0, step=1.0)
-    diesel_kmpl = st.number_input('Comparable diesel efficiency (km/L)', value=10.0, min_value=4.0, max_value=25.0, step=0.5)
+    i1,i2,i3,i4=st.columns(4)
+    daily_km = i1.number_input('Daily driving distance (km)', value=80, min_value=10, max_value=400, step=5)
+    ac_tariff = i2.number_input('AC charging tariff (INR/kWh)', value=9.0, min_value=2.0, max_value=40.0, step=0.5)
+    dc_tariff = i3.number_input('DC fast-charge tariff (INR/kWh)', value=18.0, min_value=2.0, max_value=60.0, step=0.5)
+    diesel_price = i4.number_input('Diesel price (INR/L)', value=95.0, min_value=50.0, max_value=200.0, step=1.0)
+
+    j1,j2=st.columns([1.4,1])
+    mix_mode = j1.radio('Charging usage input', ['By energy share (%)', 'By charging frequency'], horizontal=True)
+    diesel_kmpl = j2.number_input('Comparable diesel efficiency (km/L)', value=10.0, min_value=4.0, max_value=25.0, step=0.5)
+
+    ac_share_pct = 80.0
+    dc_share_pct = 20.0
+    ac_sessions_week = 0.0
+    dc_sessions_week = 0.0
+    mix_note = ''
+    if mix_mode == 'By energy share (%)':
+        ac_share_pct = st.slider('AC charging share (%)', min_value=0, max_value=100, value=80, step=5)
+        dc_share_pct = 100 - ac_share_pct
+        mix_note = f'Charging cost uses {ac_share_pct}% AC energy and {dc_share_pct}% DC energy.'
+    else:
+        k1,k2=st.columns(2)
+        ac_sessions_week = k1.number_input('AC sessions per week', value=2.0, min_value=0.0, max_value=14.0, step=0.5)
+        dc_sessions_week = k2.number_input('DC sessions per week', value=0.5, min_value=0.0, max_value=14.0, step=0.5)
+        total_sessions = max(0.1, ac_sessions_week + dc_sessions_week)
+        ac_share_pct = ac_sessions_week / total_sessions * 100
+        dc_share_pct = dc_sessions_week / total_sessions * 100
+        mix_note = f'Session frequency is converted into an estimated charging split of {ac_share_pct:.0f}% AC and {dc_share_pct:.0f}% DC.'
 
     payload_sorted=sorted(R['payload_sens'], key=lambda d:d['payload'])
     no_load_est=payload_sorted[0]['range']
@@ -1365,32 +1519,141 @@ if active_section == "Customer":
     c3.markdown(mc('Energy Use',f"{R['E_design']*1000:.1f}",'Wh/km'),unsafe_allow_html=True)
     c4.markdown(mc('AC Full Charge',f"{R['t_ac_h']:.1f}",'hours'),unsafe_allow_html=True)
 
-    ev_cost_per_km = R['E_design'] * tariff
-    diesel_cost_per_km = diesel_price / max(0.1, diesel_kmpl)
     monthly_km = daily_km * 30
+    monthly_energy_kwh = R['E_design'] * monthly_km
+    ac_energy_kwh = monthly_energy_kwh * ac_share_pct / 100
+    dc_energy_kwh = monthly_energy_kwh * dc_share_pct / 100
+    monthly_ev_ac = ac_energy_kwh * ac_tariff
+    monthly_ev_dc = dc_energy_kwh * dc_tariff
+    monthly_ev = monthly_ev_ac + monthly_ev_dc
+    blended_tariff = monthly_ev / max(0.1, monthly_energy_kwh)
+    ev_cost_per_km = monthly_ev / max(1, monthly_km)
+    diesel_cost_per_km = diesel_price / max(0.1, diesel_kmpl)
     monthly_ev = ev_cost_per_km * monthly_km
     monthly_diesel = diesel_cost_per_km * monthly_km
     monthly_saving = monthly_diesel - monthly_ev
-
-    st.markdown(
-        '| Metric | Value |\n'
-        '|---|---|\n'
-        f"| EV running cost | INR {ev_cost_per_km:.2f}/km |\n"
-        f"| Diesel running cost | INR {diesel_cost_per_km:.2f}/km |\n"
-        f"| Monthly EV energy cost ({monthly_km:.0f} km) | INR {monthly_ev:,.0f} |\n"
-        f"| Monthly diesel fuel cost ({monthly_km:.0f} km) | INR {monthly_diesel:,.0f} |\n"
-        f"| Monthly saving with EV | INR {monthly_saving:,.0f} |\n"
-    )
+    annual_saving = monthly_saving * 12
+    saving_pct = (monthly_saving / monthly_diesel * 100) if monthly_diesel > 0 else 0
 
     usable_trip_range = max(1, R['range_actual'] * 0.80)
     charges_per_week = (daily_km * 7) / usable_trip_range
     trip_km = st.number_input('Intercity trip distance (km)', value=320, min_value=50, max_value=2000, step=10)
     dc_hop_range = max(1, R['range_actual'] * 0.65)
     dc_stops = max(0, math.ceil(max(0, trip_km - R['range_actual']) / dc_hop_range))
+    annual_charges = charges_per_week * 52
+
+    c1,c2=st.columns([1.05,1.95])
+    with c1:
+        st.markdown(f'<div class="rolebox">{mix_note}</div>', unsafe_allow_html=True)
+        st.markdown(
+            '| Metric | Value |\n'
+            '|---|---|\n'
+            f"| Blended charging tariff | INR {blended_tariff:.2f}/kWh |\n"
+            f"| AC energy share | {ac_share_pct:.0f}% |\n"
+            f"| DC energy share | {dc_share_pct:.0f}% |\n"
+            f"| EV running cost | INR {ev_cost_per_km:.2f}/km |\n"
+            f"| Diesel running cost | INR {diesel_cost_per_km:.2f}/km |\n"
+            f"| Monthly AC charging cost | INR {monthly_ev_ac:,.0f} |\n"
+            f"| Monthly DC charging cost | INR {monthly_ev_dc:,.0f} |\n"
+            f"| Monthly EV energy cost ({monthly_km:.0f} km) | INR {monthly_ev:,.0f} |\n"
+            f"| Monthly diesel fuel cost ({monthly_km:.0f} km) | INR {monthly_diesel:,.0f} |\n"
+            f"| Annual EV energy cost | INR {monthly_ev*12:,.0f} |\n"
+            f"| Annual saving with EV | INR {annual_saving:,.0f} |\n"
+        )
+    with c2:
+        st.markdown(
+            f'<div class="savingspanel">'
+            f'<div class="savingslabel">Monthly savings with EV</div>'
+            f'<div class="savingsvalue">INR {monthly_saving:,.0f}</div>'
+            f'<div class="savingssub">{saving_pct:.1f}% lower running cost than diesel at {monthly_km:.0f} km/month.</div>'
+            f'<div class="savingstrip">'
+            f'<div class="savingtile"><div class="k">Annual saving</div><div class="v">INR {annual_saving/100000:.2f}L</div></div>'
+            f'<div class="savingtile"><div class="k">Weekly charges</div><div class="v">{charges_per_week:.1f}</div></div>'
+            f'<div class="savingtile"><div class="k">Trip DC stops</div><div class="v">{dc_stops}</div></div>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    c1,c2=st.columns(2)
+    with c1:
+        fig_cost = go.Figure()
+        fig_cost.add_trace(go.Bar(
+            x=['EV via AC', 'EV via DC', 'Diesel monthly fuel'],
+            y=[monthly_ev_ac, monthly_ev_dc, monthly_diesel],
+            marker_color=[GREEN, '#14B8A6', RED],
+            text=[f'INR {monthly_ev_ac:,.0f}', f'INR {monthly_ev_dc:,.0f}', f'INR {monthly_diesel:,.0f}'],
+            textposition='outside',
+            name='Monthly cost'
+        ))
+        fig_cost.add_trace(go.Scatter(
+            x=['Savings gap'],
+            y=[monthly_saving],
+            mode='markers+text',
+            marker=dict(size=18, color='#047857'),
+            text=[f'INR {monthly_saving:,.0f} saved'],
+            textposition='top center',
+            name='Savings'
+        ))
+        fig_cost.update_layout(title='Monthly Running Cost Comparison', height=GRID_H, yaxis_title='INR', **LAYOUT)
+        st.plotly_chart(fig_cost, use_container_width=True)
+    with c2:
+        fig_range = go.Figure(go.Bar(
+            x=['Light load', 'Full payload', 'Practical trip range', 'DC fast-charge hop'],
+            y=[no_load_est, full_load_est, usable_trip_range, dc_hop_range],
+            marker_color=[GREEN, AMBER, BLUE, '#0F766E'],
+            text=[f'{no_load_est:.0f} km', f'{full_load_est:.0f} km', f'{usable_trip_range:.0f} km', f'{dc_hop_range:.0f} km'],
+            textposition='outside'
+        ))
+        fig_range.update_layout(title='Range Envelope For Daily Use And Trips', height=GRID_H, yaxis_title='km', **LAYOUT)
+        st.plotly_chart(fig_range, use_container_width=True)
+
+    c1,c2=st.columns(2)
+    with c1:
+        fig_charge = go.Figure(go.Indicator(
+            mode='gauge+number',
+            value=charges_per_week,
+            number={'suffix': ' / week'},
+            gauge={
+                'axis': {'range': [0, max(4, charges_per_week + 1)]},
+                'bar': {'color': active_theme['color']},
+                'steps': [
+                    {'range': [0, 1.5], 'color': '#ECFDF5'},
+                    {'range': [1.5, 3], 'color': '#D1FAE5'},
+                    {'range': [3, max(4, charges_per_week + 1)], 'color': '#A7F3D0'},
+                ],
+            },
+            title={'text': 'Charging Frequency Estimate'}
+        ))
+        fig_charge.update_layout(height=280, margin=dict(l=10,r=10,t=48,b=10), paper_bgcolor='white')
+        st.plotly_chart(fig_charge, use_container_width=True)
+    with c2:
+        fig_trip = go.Figure()
+        fig_trip.add_trace(go.Bar(
+            x=['Trip distance'],
+            y=[trip_km],
+            marker_color=BLUE,
+            name='Trip'
+        ))
+        fig_trip.add_trace(go.Bar(
+            x=['Trip distance'],
+            y=[R['range_actual']],
+            marker_color=GREEN,
+            name='Single-charge max'
+        ))
+        fig_trip.add_trace(go.Bar(
+            x=['Trip distance'],
+            y=[dc_hop_range],
+            marker_color=AMBER,
+            name='Practical DC hop'
+        ))
+        fig_trip.update_layout(title='Trip Planning Distance Check', height=280, yaxis_title='km', barmode='group', **LAYOUT)
+        st.plotly_chart(fig_trip, use_container_width=True)
 
     st.markdown('<div class="rolebox">'
                 f"Weekly charging estimate: ~{charges_per_week:.1f} equivalent full charges/week for {daily_km} km/day.<br>"
-                f"For a {trip_km} km trip, plan approximately {dc_stops} DC fast-charge stop(s)."
+                f"For a {trip_km} km trip, plan approximately {dc_stops} DC fast-charge stop(s).<br>"
+                f"That is roughly {annual_charges:.0f} full-charge equivalents per year at the current duty."
                 '</div>', unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------
@@ -1424,7 +1687,7 @@ if active_section == "PM":
             },
             title={'text':'Gate Pass %'}
         ))
-        fig_pm.update_layout(height=260,margin=dict(l=10,r=10,t=40,b=10),paper_bgcolor='white')
+        fig_pm.update_layout(height=GRID_H,margin=dict(l=10,r=10,t=40,b=10),paper_bgcolor='white')
         st.plotly_chart(fig_pm,use_container_width=True)
     with c2:
         st.markdown('| Program Gate | Status | Evidence |\n|---|---|---|\n' + ''.join(
@@ -1452,6 +1715,30 @@ if active_section == "PM":
     high_count=sum(1 for _,sev,_ in risks if sev=='High')
     med_count=sum(1 for _,sev,_ in risks if sev=='Medium')
     launch_weeks=20 + high_count*2 + med_count
+    c1,c2=st.columns(2)
+    with c1:
+        gate_labels=[name for name,_,_ in gates]
+        gate_values=[1 if ok else 0 for _,ok,_ in gates]
+        gate_colors=[GREEN if ok else RED for _,ok,_ in gates]
+        fig_gate_bar=go.Figure(go.Bar(
+            x=gate_labels,
+            y=gate_values,
+            marker_color=gate_colors,
+            text=['PASS' if ok else 'RISK' for _,ok,_ in gates],
+            textposition='outside'
+        ))
+        fig_gate_bar.update_layout(title='Program Gate Status', height=GRID_H, yaxis=dict(range=[0,1.2], title='Status score'), **LAYOUT)
+        st.plotly_chart(fig_gate_bar, use_container_width=True)
+    with c2:
+        fig_risk = go.Figure(go.Bar(
+            x=['High risks', 'Medium risks', 'Launch plan'],
+            y=[high_count, med_count, launch_weeks],
+            marker_color=[RED, AMBER, BLUE],
+            text=[str(high_count), str(med_count), f'{launch_weeks} w'],
+            textposition='outside'
+        ))
+        fig_risk.update_layout(title='Risk Load And Launch Timeline', height=GRID_H, yaxis_title='Count / Weeks', **LAYOUT)
+        st.plotly_chart(fig_risk, use_container_width=True)
     st.markdown('<div class="rolebox">'
                 f"Planning estimate: baseline 20 weeks + risk buffer = <b>{launch_weeks} weeks</b> from current readiness snapshot."
                 '</div>', unsafe_allow_html=True)
